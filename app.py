@@ -1,29 +1,46 @@
-from flask import Flask, render_template, request, redirect
+import json
 import boto3
+import urllib.parse
 
-app = Flask(__name__)
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('Students')
 
-@app.route('/', methods=['GET'])
-def index():
-    # Fetch student list from DynamoDB
-    response = table.scan()
-    students = response.get('Items', [])
-    return render_template('index.html', students=students)
+def lambda_handler(event, context):
+    method = event.get("httpMethod")
+    
+    if method == "GET":
+        # Return all students
+        response = table.scan()
+        return {
+            "statusCode": 200,
+            "body": json.dumps(response.get("Items", [])),
+            "headers": {"Content-Type": "application/json"}
+        }
 
-@app.route('/submit', methods=['POST'])
-def submit():
-    student_id = request.form['student_id']
-    name = request.form['name']
-    age = request.form['age']
-    course = request.form['course']
+    elif method == "POST":
+        # Get body data (application/x-www-form-urlencoded)
+        body = urllib.parse.parse_qs(event.get("body", ""))
+        
+        student_id = body.get("student_id", [""])[0]
+        name = body.get("name", [""])[0]
+        age = body.get("age", [""])[0]
+        course = body.get("course", [""])[0]
 
-    table.put_item(Item={
-        'student_id': student_id,
-        'name': name,
-        'age': age,
-        'course': course
-    })
+        table.put_item(Item={
+            "student_id": student_id,
+            "name": name,
+            "age": age,
+            "course": course
+        })
 
-    return redirect('/')
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": "Student saved"}),
+            "headers": {"Content-Type": "application/json"}
+        }
+
+    else:
+        return {
+            "statusCode": 405,
+            "body": json.dumps({"error": "Method not allowed"})
+        }
